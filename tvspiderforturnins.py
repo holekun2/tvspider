@@ -10,6 +10,7 @@ import sys
 from mpspider import MatterportSpider
 from dotenv import load_dotenv
 import os
+from sfspider import Salesforce, SiteTurnins  # Import the Salesforce and SiteTurnins classes
 
 # Load environment variables from .env file
 load_dotenv()
@@ -335,6 +336,10 @@ def main():
                     talon_view.add_matterport()
                     talon_view.input_matterport_url()  # Call the new function here
                     talon_view.add_matterport_confirm()
+
+                    # Return to the Matterport models page after processing the site
+                    matterport_spider.return_to_models_page()
+
                 else:
                     print(f"No share link found for site ID {site_id}. Proceeding to pass/fail prompt.")
                     # Removed 'continue' to ensure it goes to the pass/fail prompt
@@ -359,10 +364,25 @@ def main():
                 print(f"An error occurred while processing site ID {site_id}: {str(e)}")
                 
 
+        # Ask the user if they want to turn in the sites after reviewing all site IDs
+        turn_in_sites = input("Do you want to turn in the sites now? (yes/no): ").strip().lower()
+        if turn_in_sites == 'yes':
+            print("Turning in the sites...")
 
-            print("Ready for next site ID.")
+            # Initialize Salesforce and SiteTurnins classes
+            salesforce = Salesforce(driver)
+            site_turnins = SiteTurnins(driver)
 
+            # Log in to Salesforce and navigate to the "Ready for QA" page
+            salesforce.login()
+            salesforce.navigate_to_ready_for_qa()
 
+            # Pass the results to the SiteTurnins class to process the site turn-ins
+            site_turnins.open_inspection_tabs(results)
+        else:
+            print("Skipping the turn-in process.")
+
+        print("Ready for next site ID.")
 
     # Print the results
     for result in results:

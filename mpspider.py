@@ -109,6 +109,18 @@ class MatterportSpider:
             print(f"An error occurred while getting the share link: {e}")
             return None  # Return None in case of an error
 
+    def return_to_models_page(self):
+        """
+        Navigate back to the Matterport models page after processing a site.
+        """
+        try:
+            print("Returning to Matterport models page...")
+            self.driver.get("https://my.matterport.com/models")
+            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input.H_pqOjjyLod793oGrhYZ")))
+            print("Returned to Matterport models page.")
+        except Exception as e:
+            print(f"An error occurred while returning to the models page: {e}")
+
     def main(self):
         self.login()
         site_id = input("enter site id to search for:")
@@ -116,7 +128,6 @@ class MatterportSpider:
         self.get_share_link()
         print(f"searching for site: {site_id}")
         input("Press Enter to continue...")
-
 
 if __name__ == "__main__":
     # Load Matterport credentials from environment variables
