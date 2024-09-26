@@ -66,7 +66,7 @@ class MatterportSpider:
             search_bar.clear()
             
         except Exception as e:
-            print(f"An error occurred while searching for the site: {e}")
+            
             return None  # Return None in case of an error
 
     def get_share_link(self):
@@ -106,7 +106,7 @@ class MatterportSpider:
             return link
 
         except Exception as e:
-            print(f"An error occurred while getting the share link: {e}")
+        
             return None  # Return None in case of an error
 
     def return_to_models_page(self):

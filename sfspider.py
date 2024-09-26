@@ -7,7 +7,7 @@ import time
 from selenium.common.exceptions import StaleElementReferenceException
 from dotenv import load_dotenv
 import os
-
+from selenium.common.exceptions import NoSuchElementException
 # Load environment variables from .env file
 load_dotenv()
 
@@ -98,8 +98,12 @@ class SiteTurnins:
                             # Open the link in a new tab
                             self.driver.execute_script("window.open(arguments[0].href, '_blank');", inspection_link)
                         break  # Exit the loop once the site ID is found
+                except NoSuchElementException:
+                    # Silently continue to the next row if the element is not found
+                    continue
                 except Exception as e:
-                    print(f"Error processing row: {e}")
+                    # Log other exceptions without printing the full error message
+                    print(f"Unexpected error processing row: {type(e).__name__}")
 
             # Switch back to the main content
             self.driver.switch_to.default_content()
@@ -139,10 +143,13 @@ class SiteTurnins:
                 # Access the second input field
                 input_field = input_fields[1]
 
-                # Focus on the input field and enter 'John James'
+                # Define the name to select as a variable
+                name_to_select = 'John James'  # Change this to the desired name
+
+                # Focus on the input field and enter the name
                 input_field.click()
                 input_field.clear()
-                input_field.send_keys('John James')
+                input_field.send_keys(name_to_select)
 
                 # Wait for the autocomplete options to appear
                 time.sleep(0.5)  # Adjust the sleep time as needed
@@ -150,13 +157,18 @@ class SiteTurnins:
                 # Retry mechanism for handling stale elements
                 for attempt in range(3):  # Retry up to 3 times
                     try:
-                        # Find the default autocomplete option within the context of the second input field
-                        default_option = WebDriverWait(self.driver, 10).until(
-                            EC.element_to_be_clickable((By.XPATH, "//li[contains(@class, 'lookup__item') and contains(@class, 'default')]//a"))
+                        # Construct XPath to find the div with the matching title
+                        option_xpath = f"//a[@role='option']//div[@class='primaryLabel slds-truncate slds-lookup__result-text' and @title='{name_to_select}']"
+
+                        # Wait until the matching option is clickable
+                        matching_option = WebDriverWait(self.driver, 10).until(
+                            EC.element_to_be_clickable((By.XPATH, option_xpath))
                         )
 
-                        # Click the default option
-                        default_option.click()
+                        # Click the parent <a> element to select the option
+                        matching_option.find_element(By.XPATH, "./ancestor::a").click()
+
+                        print(f"Successfully selected '{name_to_select}'.")
                         break  # Exit the retry loop if successful
                     except StaleElementReferenceException:
                         print(f"Stale element encountered. Retrying... (Attempt {attempt + 1}/3)")
@@ -173,7 +185,7 @@ class SiteTurnins:
             for dropdown in dropdowns:
                 try:
                     # Check if the dropdown is within the desired container
-                    container = dropdown.find_element(By.XPATH, "ancestor::div[@data-target-selection-name='sfdc:RecordField.Quality_Reviews__c.Review_Result__c']")
+                    container = dropdown.find_elements(By.XPATH, "ancestor::div[@data-target-selection-name='sfdc:RecordField.Quality_Reviews__c.Review_Result__c']")
                     if container:
                         dropdown.click()
                         time.sleep(3)
@@ -215,13 +227,14 @@ class SiteTurnins:
                             print(f"Please select a result for site ID: {site_id}")
                         break  # Exit the loop once the correct dropdown is processed
                 except Exception as e:
-                    print(f"Error processing dropdown: {e}")
+                    # Suppress the error message
+                    pass
 
             time.sleep(3)
 
             # Click the "Cancel" button
             cancel_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//span[text()='Save']"))
+                EC.element_to_be_clickable((By.XPATH, "//span[text()='Cancel']"))
             )
             cancel_button.click()
             time.sleep(3)
@@ -229,6 +242,72 @@ class SiteTurnins:
             # Close the tab and switch back to the original window
             self.driver.close()
             self.driver.switch_to.window(self.driver.window_handles[0])
+
+    def parse_report_table(self):
+        """
+        Parses the entire table on the report page and returns it as a list of lists.
+        
+        Returns:
+            list: A list of lists representing the table data.
+        """
+        table_data = []
+        try:
+            # Switch to the iframe containing the table using the provided CSS selector
+            iframe_css_selector = "iframe.isView.reportsReportBuilder"
+            iframe = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, iframe_css_selector))
+            )
+            self.driver.switch_to.frame(iframe)
+            print("Switched to the report iframe.")
+
+            # Wait for a short duration to ensure the table is fully loaded
+            time.sleep(2)
+
+            # Use the same CSS selector for the table as in open_inspection_tabs
+            table_css_selector = 'tr.data-grid-table-row'
+
+            try:
+                rows = WebDriverWait(self.driver, 20).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, table_css_selector))
+                )
+                print("Report table rows found using the provided CSS selector.")
+            except Exception as e:
+                print(f"Failed to locate table rows using CSS selector. Error: {e}")
+                return table_data
+
+            # Extract table headers (if needed, optional)
+            headers = []
+            header_elements = self.driver.find_elements(By.CSS_SELECTOR, "thead th")
+            if not header_elements:
+                print("No header elements found. The table might be empty or headers use different tags.")
+            for header in header_elements:
+                headers.append(header.text.strip())
+            if headers:
+                print(f"Table headers: {headers}")
+            else:
+                print("No headers extracted.")
+
+            # Extract table rows
+            for row in rows:
+                row_data = []
+                cells = row.find_elements(By.CSS_SELECTOR, "td")
+                if not cells:
+                    print("No cells found in this row. Skipping.")
+                    continue
+                for cell in cells:
+                    cell_text = cell.text.strip()
+                    row_data.append(cell_text)
+                table_data.append(row_data)
+            print(f"Extracted {len(table_data)} rows from the table.")
+
+        except Exception as e:
+            print(f"An error occurred while parsing the report table: {e}")
+        finally:
+            # Switch back to the default content
+            self.driver.switch_to.default_content()
+            print("Switched back to the default content.")
+        
+        return table_data
 
 def main():
     # Initialize the classes
@@ -238,6 +317,9 @@ def main():
     # Navigate to the Ready for QA page
     salesforce.login()
     salesforce.navigate_to_ready_for_qa()
+    
+    # Parse the report table and store the data in a variable
+    parsed_table_data = site_turnins.parse_report_table()
     
     # Wrap the prompting and processing in a loop
     while True:

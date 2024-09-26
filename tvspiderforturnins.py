@@ -244,6 +244,81 @@ class TalonViewAutomation:
             print(f"Error while checking for existing 360° views: {e}")
             return False
 
+    def count_photos_in_folder(self, folder_names):
+        """
+        Counts the number of photos in the specified folder(s) by scrolling to the end
+        and retrieving the last photo's number.
+
+        Args:
+            folder_names (list): List of folder names to check (e.g., ["Downlook", "DL"]).
+
+        Returns:
+            dict: A dictionary with folder names as keys and photo counts as values.
+        """
+        photo_counts = {}
+
+        # Identify valid folders from the list of matches
+        folder_elements = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".session-folders-item .session-folders-item-name"))
+        )
+        valid_folders = [folder.text.lower() for folder in folder_elements if folder.text.lower() in folder_names]
+
+        for folder_name in valid_folders:
+            try:
+                # Locate the folder by name (case-insensitive)
+                folder_element = next((folder for folder in folder_elements if folder.text.lower() == folder_name), None)
+                if not folder_element:
+                    continue
+
+                # Use JavaScript to click the folder element
+                self.driver.execute_script("arguments[0].click();", folder_element)
+                print(f"Clicked on folder: {folder_name}")
+
+                # Wait for the sidebar to load
+                sidebar = WebDriverWait(self.driver, 10).until(
+                    EC.visibility_of_element_located((
+                        By.CSS_SELECTOR,
+                        "#react-root > div > div:nth-child(2) > div.contentWrapper > div.sidebarApp > section.gallery-toolbar > div:nth-child(3) > section"
+                    ))
+                )
+
+                # Scroll the sidebar to load all photos
+                last_height = self.driver.execute_script("return arguments[0].scrollHeight", sidebar)
+                while True:
+                    self.driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", sidebar)
+                    time.sleep(2)  # Wait for new photos to load
+                    new_height = self.driver.execute_script("return arguments[0].scrollHeight", sidebar)
+                    if new_height == last_height:
+                        break
+                    last_height = new_height
+                    print("Scrolling...")
+
+                # Retrieve all photo elements
+                photos = self.driver.find_elements(By.CSS_SELECTOR, "li.gallery-item")
+
+                if photos:
+                    # Get the number from the last photo
+                    last_photo = photos[-1].find_element(By.CSS_SELECTOR, "span.gallery-item-page > i")
+                    photo_count = int(last_photo.text.strip())
+                    photo_counts[folder_name] = photo_count
+                    print(f"Total photos in '{folder_name}': {photo_count}")
+                else:
+                    photo_counts[folder_name] = 0
+                    print(f"No photos found in '{folder_name}'.")
+
+                # Navigate back to the previous view
+                back_arrow = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "div.gallery-navbar-back-arrow"))
+                )
+                self.driver.execute_script("arguments[0].click();", back_arrow)
+                print(f"Navigated back from folder: {folder_name}")
+
+            except Exception as e:
+                print(f"An error occurred while counting photos in '{folder_name}': {e}")
+                photo_counts[folder_name] = None
+
+        return photo_counts
+
 
 def main():
     driver = TalonViewAutomation.initialize_driver()
@@ -264,6 +339,26 @@ def main():
     matterport_spider = MatterportSpider(matterport_username, matterport_password)
     matterport_spider.login()
     driver.switch_to.window(driver.window_handles[0])
+
+    ### New Steps Start Here ###
+    # Open a new tab for Salesforce
+    driver.execute_script("window.open('');")
+    driver.switch_to.window(driver.window_handles[2])
+
+    # Initialize Salesforce and SiteTurnins instances
+    salesforce = Salesforce(driver)
+    site_turnins = SiteTurnins(driver)
+
+    # Log in to Salesforce and navigate to the "Ready for QA" page
+    salesforce.login()
+    salesforce.navigate_to_ready_for_qa()
+
+    # Parse the report table and write to a text file
+    site_turnins.parse_report_table()
+
+    # Switch back to the main TalonView tab
+    driver.switch_to.window(driver.window_handles[0])
+    ### New Steps End Here ###
 
     results = []
 
@@ -317,7 +412,7 @@ def main():
                         if matching_folder_element:
                             # Check if the 360° view already exists
                             if talon_view.is_360_present(match):
-                                print(f"Skipping adding 360° view for '{match}' as it already exists.")
+                                print(f"Skipping adding 360° view for '{match}'")
                                 continue  # Skip to the next match
 
                             print(f"Adding {match} to {site_id}")
@@ -326,23 +421,32 @@ def main():
                             talon_view.click_add_folder_to_item_button(matching_folder_element.text.strip())
                             talon_view.click_done_button()
                 
+                # Check and count photos in "Downlook" or "DL" folder
+                relevant_folders = ["downlook", "dl"]
+                photo_counts = talon_view.count_photos_in_folder(relevant_folders)
+                print(f"Photo counts for site ID {site_id}: {photo_counts}")
+
                 # Search for the site in Matterport
-                matterport_spider.search_site(site_id)
-                share_link = matterport_spider.get_share_link()
+                try:
+                    matterport_spider.search_site(site_id)
+                    #share_link = matterport_spider.get_share_link()
+                except Exception as e:
+                    print(f"Suppressed error while searching for site or getting share link: {e}")
+                    share_link = None
 
-                if share_link:
-                    time.sleep(5)
-                    talon_view.click_add_button()
-                    talon_view.add_matterport()
-                    talon_view.input_matterport_url()  # Call the new function here
-                    talon_view.add_matterport_confirm()
+                # if share_link:
+                #     time.sleep(5)
+                #     talon_view.click_add_button()
+                #     talon_view.add_matterport()
+                #     talon_view.input_matterport_url()  # Call the new function here
+                #     talon_view.add_matterport_confirm()
 
-                    # Return to the Matterport models page after processing the site
-                    matterport_spider.return_to_models_page()
+                #     # Return to the Matterport models page after processing the site
+                #     matterport_spider.return_to_models_page()
 
-                else:
-                    print(f"No share link found for site ID {site_id}. Proceeding to pass/fail prompt.")
-                    # Removed 'continue' to ensure it goes to the pass/fail prompt
+                # else:
+                #     print(f"No share link found for site ID {site_id}. Proceeding to pass/fail prompt.")
+                #     # Removed 'continue' to ensure it goes to the pass/fail prompt
 
                 # Pause for user input
                 pass_fail = input(f"Did the session for site ID {site_id} pass or fail? (pass/fail/skip): ").strip().lower()
@@ -363,6 +467,35 @@ def main():
             except Exception as e:
                 print(f"An error occurred while processing site ID {site_id}: {str(e)}")
                 
+                try:
+                    # Navigate back to the all sessions page
+                    driver.get("https://mechanicalvisionsolutions.collaborate.center/all-sessions")
+                except Exception as nav_e:
+                    print(f"Failed to navigate back: {nav_e}")
+
+                # Proceed to the pass/fail input step
+                try:
+                    pass_fail = input(f"Did the session for site ID {site_id} pass or fail? (pass/fail/skip): ").strip().lower()
+                except Exception as input_e:
+                    print(f"Failed to get pass/fail input: {input_e}")
+                    pass_fail = "skip"
+
+                fail_reason = ""
+                if pass_fail == "fail":
+                    try:
+                        fail_reason = input("Please provide the reason for failure: ").strip()
+                    except Exception as input_e:
+                        print(f"Failed to get failure reason: {input_e}")
+                        fail_reason = "No reason provided."
+
+                # Add the result to the list if it's not a skip
+                if pass_fail != "skip":
+                    results.append((site_id, pass_fail, driver.current_url, fail_reason))
+                
+                print(f"Finished processing site ID: {site_id} with error handling.")
+                print("results so far: ", results)
+                
+                continue  # Proceed to the next site_id
 
         # Ask the user if they want to turn in the sites after reviewing all site IDs
         turn_in_sites = input("Do you want to turn in the sites now? (yes/no): ").strip().lower()
@@ -370,12 +503,7 @@ def main():
             print("Turning in the sites...")
 
             # Initialize Salesforce and SiteTurnins classes
-            salesforce = Salesforce(driver)
-            site_turnins = SiteTurnins(driver)
-
-            # Log in to Salesforce and navigate to the "Ready for QA" page
-            salesforce.login()
-            salesforce.navigate_to_ready_for_qa()
+            # (Already initialized earlier; no need to re-initialize)
 
             # Pass the results to the SiteTurnins class to process the site turn-ins
             site_turnins.open_inspection_tabs(results)
