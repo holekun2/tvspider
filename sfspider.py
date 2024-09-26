@@ -234,7 +234,7 @@ class SiteTurnins:
 
             # Click the "Cancel" button
             cancel_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//span[text()='Cancel']"))
+                EC.element_to_be_clickable((By.XPATH, "//span[text()='Save']"))
             )
             cancel_button.click()
             time.sleep(3)
