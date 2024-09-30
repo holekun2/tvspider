@@ -82,28 +82,67 @@ class TalonViewAutomation:
         search_bar.send_keys(site_id)
         time.sleep(2)
 
-        # Check if no results are found and adjust the date range
+        # Check if the correct site is found by verifying the presence of site_id in the title
         try:
-            checkbox = WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.XPATH, f"//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"))
+            # Locate the outer element containing the site name
+            outer_element = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@class='MuiBox-root css-70qvj9']//p[@title]"))
             )
-        except Exception:
-            print(f"No sessions found for {site_id}. Adjusting date range to go back another 4 days.")
-            start_date = start_date - timedelta(days=4)
-            date_range_input.clear()
-            date_range_input.send_keys(f"{end_date.strftime('%m/%d/%Y')} – {start_date.strftime('%m/%d/%Y')}")
-            date_range_input.send_keys(Keys.ENTER)
-            date_range_input.send_keys(Keys.ESCAPE)
+            site_title = outer_element.get_attribute("title")
+            
+            if site_id not in site_title:
+                print(f"Site name mismatch: expected to find {site_id} in '{site_title}'. Adjusting date range.")
+                # Adjust the date range logic here
+                start_date -= timedelta(days=4)
+                date_range_input = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "input[placeholder='MM/DD/YYYY – MM/DD/YYYY']"))
+                )
+                date_range_input.clear()
+                date_range_input.send_keys(f"{end_date.strftime('%m/%d/%Y')} – {start_date.strftime('%m/%d/%Y')}")
+                date_range_input.send_keys(Keys.ENTER)
+                date_range_input.send_keys(Keys.ESCAPE)
 
-            # Retry finding the checkbox after adjusting the date range
+                # Retry searching for the site
+                search_bar.clear()
+                search_bar.send_keys(site_id)
+                time.sleep(2)
+
+                # Attempt to locate the checkbox again
+                try:
+                    checkbox = WebDriverWait(self.driver, 20).until(
+                        EC.presence_of_element_located((By.XPATH, f"//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"))
+                    )
+                    
+                    # Re-validate the site name after adjusting
+                    outer_element = self.driver.execute_script("return arguments[0].closest('div.MuiBox-root.css-70qvj9');", checkbox)
+                    if outer_element:
+                        site_title = outer_element.find_element(By.TAG_NAME, "p").get_attribute("title")
+                        if site_id not in site_title:
+                            raise ValueError("Site ID not found in the site title after adjusting date range.")
+                except Exception as e:
+                    print(f"Unable to find the correct site after adjusting: {e}")
+                    user_input = input(f"Do you want to skip site ID {site_id}? (yes/no): ").strip().lower()
+                    if user_input == 'yes':
+                        print(f"Skipping site ID {site_id}.")
+                        return  # Exit the method to proceed to the next site_id
+                    else:
+                        raise e  # Re-raise the exception if the user does not want to skip
+
+            # If site name matches, proceed to locate the checkbox
             checkbox = WebDriverWait(self.driver, 20).until(
                 EC.presence_of_element_located((By.XPATH, f"//input[@type='checkbox' and contains(@class, 'PrivateSwitchBase-input')]"))
             )
+        except Exception as e:
+            print(f"An error occurred while verifying the site name for {site_id}: {e}")
+            user_input = input(f"Do you want to skip site ID {site_id}? (yes/no): ").strip().lower()
+            if user_input == 'yes':
+                print(f"Skipping site ID {site_id}.")
+                return  # Exit the method to proceed to the next site_id
+            else:
+                raise e  # Re-raise the exception if the user does not want to skip
 
         parent_element = self.driver.execute_script("return arguments[0].closest('span');", checkbox)
         self.driver.execute_script("arguments[0].click();", parent_element)
-        
-        #add a step here that would prompt the user to skip this session at this point in the code and go to the next site id
         
         add_user_button = WebDriverWait(self.driver, 20).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Switch owner of selected sessions']"))
