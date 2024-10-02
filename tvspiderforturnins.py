@@ -1,3 +1,4 @@
+#tvspiderforturnins.py
 #use selenium to open a website
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -78,7 +79,10 @@ class TalonViewAutomation:
         search_bar = WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search']"))
         )
-        search_bar.clear()
+        # Use JavaScript to clear the search bar
+        self.driver.execute_script("arguments[0].value = '';", search_bar)
+
+        # Re-enter the site_id
         search_bar.send_keys(site_id)
         time.sleep(2)
 
@@ -103,7 +107,13 @@ class TalonViewAutomation:
                 date_range_input.send_keys(Keys.ESCAPE)
 
                 # Retry searching for the site
-                search_bar.clear()
+                search_bar = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search']"))
+                )
+                # Use JavaScript to clear the search bar
+                self.driver.execute_script("arguments[0].value = '';", search_bar)
+
+                # Re-enter the site_id
                 search_bar.send_keys(site_id)
                 time.sleep(2)
 
@@ -530,7 +540,7 @@ def main():
                 # Add the result to the list if it's not a skip
                 if pass_fail != "skip":
                     results.append((site_id, pass_fail, driver.current_url, fail_reason))
-                
+
                 print(f"Finished processing site ID: {site_id} with error handling.")
                 print("results so far: ", results)
                 

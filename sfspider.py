@@ -1,4 +1,4 @@
-#selenium
+#sfspider.py
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -50,6 +50,29 @@ class Salesforce:
 
         # Wait for the report page to load
         time.sleep(5)
+
+    def click_status_counter_button(self):
+        try:
+            # Switch to the iframe first
+            iframe = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "iframe.isView.reportsReportBuilder"))
+            )
+            self.driver.switch_to.frame(iframe)
+
+            # Now locate and click the "Current Status Counter" button
+            button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//span[@id='full-data-grid-7-fixedrow0-col3-value' and contains(text(), 'Current Status Counter')]"))
+            )
+            button.click()
+            time.sleep(1)  # Wait a bit before clicking again
+            button.click()
+            time.sleep(1)  # Wait a bit to ensure the action is completed
+
+            # Switch back to the default content after interacting with the iframe
+            self.driver.switch_to.default_content()
+
+        except Exception as e:
+            print(f"Error clicking the status counter button: {e}")
 
 
 class SiteTurnins:
@@ -317,7 +340,10 @@ def main():
     # Navigate to the Ready for QA page
     salesforce.login()
     salesforce.navigate_to_ready_for_qa()
-    
+
+    # Click the status counter button twice
+    salesforce.click_status_counter_button()
+
     # Parse the report table and store the data in a variable
     parsed_table_data = site_turnins.parse_report_table()
     
